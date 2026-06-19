@@ -82,9 +82,11 @@ export async function POST(request: NextRequest) {
     // Remove duplicates
     const uniquePackages = [...new Set(packageNames)];
 
-    console.log('[detect-and-install-packages] Packages to install:', uniquePackages);
-
-    if (uniquePackages.length === 0) {
+    // Add known Stellar SDK packages to ensure they are installed in sandbox environments
+    const stellarPackages = ['@stellar/stellar-sdk', '@stellar/freighter-api'];
+    const finalPackageList = [...new Set([...uniquePackages, ...stellarPackages])];
+    console.log('[detect-and-install-packages] Final packages to install (including Stellar SDKs):', finalPackageList);
+    if (finalPackageList.length === 0) {
       return NextResponse.json({
         success: true,
         packagesInstalled: [],
