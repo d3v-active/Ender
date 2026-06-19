@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Simple command parser that respects double quotes
+function parseCommand(command: string): string[] {
+  const regex = /"([^"]*)"|'([^']*)'|\S+/g;
+  const args: string[] = [];
+  let match;
+  while ((match = regex.exec(command)) !== null) {
+    args.push(match[1] ?? match[2] ?? match[0]);
+  }
+  return args;
+}
+
+
+
 // Get active sandbox from global state (in production, use a proper state management solution)
 declare global {
   var activeSandbox: any;
@@ -25,11 +38,10 @@ export async function POST(request: NextRequest) {
     
     console.log(`[run-command] Executing: ${command}`);
     
-    // Parse command and arguments
-    const commandParts = command.trim().split(/\s+/);
-    const cmd = commandParts[0];
-    const args = commandParts.slice(1);
-    
+    // Parse command and arguments using robust shell parsing
+const parts = parseCommand(command);
+const cmd = parts[0];
+const args = parts.slice(1);    
     // Execute command using Vercel Sandbox
     const result = await global.activeSandbox.runCommand({
       cmd,
