@@ -1,6 +1,6 @@
 // PixiJS utility helpers with full TypeScript type safety
 
-import { Application, Assets, Sprite, Texture, DisplayObject } from "pixi.js";
+import { Application, Assets, Sprite, Texture, Container } from "pixi.js";
 
 /**
  * Checks if the Pixi Application's rendering context has been lost.
@@ -11,9 +11,9 @@ export const isDestroyed = (app: Application): boolean => {
 };
 
 /**
- * Generates a texture from a DisplayObject. Returns a fallback white texture if the app is destroyed.
+ * Generates a texture from a Container. Returns a fallback white texture if the app is destroyed.
  */
-export const generateTexture = (app: Application, graphic: DisplayObject): Texture => {
+export const generateTexture = (app: Application, graphic: Container): Texture => {
   const renderer = app.renderer;
   if (!isDestroyed(app)) {
     return renderer.generateTexture(graphic);
