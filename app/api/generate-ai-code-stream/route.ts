@@ -1927,10 +1927,7 @@ Provide the complete file content without any truncation. Include all necessary 
           });
           // Continue processing - packages can still be detected from the code
         } else {
-          await sendProgress({ 
-            type: 'error', 
-            error: (error as Error).message 
-          });
+        // No further action needed; error already reported to client
         }
       } finally {
         await writer.close();
