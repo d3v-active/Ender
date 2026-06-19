@@ -54,7 +54,7 @@ export default function ControlPanel({
   analysisData,
   onReset,
 }: ControlPanelProps) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const [showAIAnalysis, setShowAIAnalysis] = useState(false); // Reserved for AI analysis feature
   const [aiInsights, setAiInsights] = useState<CheckItem[]>([]);
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
@@ -342,15 +342,6 @@ export default function ControlPanel({
         return <div className="w-16 h-16 rounded-full border border-black-alpha-8" />;
     }
   };
-
-  // Utility function available but not used in current render
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "text-accent-black";
-    if (score >= 60) return "text-accent-black";
-    return "text-accent-black";
-  };
-
 
   return (
     <motion.div

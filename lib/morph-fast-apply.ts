@@ -1,4 +1,10 @@
 // Using direct fetch to Morph's OpenAI-compatible API to avoid SDK type issues
+// Simple shell argument quoting helper
+function shellQuote(args: string[]) {
+  // Use JSON.stringify to safely quote each arg
+  return args.map(a => JSON.stringify(a)).join(' ');
+}
+
 
 export interface MorphEditBlock {
   targetFile: string;
@@ -90,14 +96,14 @@ async function readFileFromSandbox(sandbox: any, normalizedPath: string, fullPat
   // Try provider runCommand (preferred for provider pattern)
   if (typeof sandbox?.runCommand === 'function') {
     try {
-      const res = await sandbox.runCommand(`cat ${normalizedPath}`);
+      const res = await sandbox.runCommand(shellQuote(['cat', normalizedPath]));
       if (res && typeof res.stdout === 'string') {
         return res.stdout as string;
       }
     } catch {}
     // fallback to absolute path
     try {
-      const resAbs = await sandbox.runCommand(`cat ${fullPath}`);
+      const resAbs = await sandbox.runCommand(shellQuote(['cat', fullPath]));
       if (resAbs && typeof resAbs.stdout === 'string') {
         return resAbs.stdout as string;
       }
@@ -106,7 +112,7 @@ async function readFileFromSandbox(sandbox: any, normalizedPath: string, fullPat
 
   // Try shell cat via commands.run
   if (sandbox?.commands?.run) {
-    const result = await sandbox.commands.run(`cat ${fullPath}`, { cwd: '/home/user/app', timeout: 30 });
+    const result = await sandbox.commands.run(shellQuote(['cat', fullPath]), { cwd: '/home/user/app', timeout: 30 });
     if (result?.exitCode === 0 && typeof result?.stdout === 'string') {
       return result.stdout as string;
     }
