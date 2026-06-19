@@ -8,9 +8,10 @@ import { Application, Assets, Sprite, Texture, Container } from "pixi.js";
 export const isDestroyed = (app: Application): boolean => {
   if (!app.ticker || !app.renderer || !app.stage) return true;
 
-  // WebGLRenderer has a gl property
-  if ('gl' in app.renderer && (app.renderer as any).gl?.isContextLost) {
-    return (app.renderer as any).gl.isContextLost();
+  // Determine if renderer is a WebGLRenderer with a gl context
+  const maybeGL = app.renderer as unknown as { gl?: { isContextLost?: () => boolean } };
+  if (maybeGL.gl && typeof maybeGL.gl.isContextLost === "function") {
+    return maybeGL.gl.isContextLost();
   }
 
   // WebGPURenderer or other renderers – assume not destroyed
@@ -62,7 +63,8 @@ export const createRenderWithFPS = (app: Application, fps: number) => {
 /** Returns a promise that resolves when the Pixi canvas dispatches "pixi-initialized". */
 export const waitUntilPixiIsReady = (app: Application): Promise<void> => {
   return new Promise((resolve) => {
-    (app.canvas as any).addEventListener("pixi-initialized", resolve);
+    const canvas = app.canvas as unknown as EventTarget;
+    canvas.addEventListener("pixi-initialized", () => resolve());
   });
 };
 
