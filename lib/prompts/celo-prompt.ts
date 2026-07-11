@@ -353,6 +353,230 @@ export default function SendStableToken() {
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔀 ADVANCED - TOKEN SWAPS & ROUTING (UBESWAP)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For swapping tokens on Celo, use Ubeswap (Celo's primary Uniswap V2 fork). Below are the router details, smart contract interfaces (ABI), routing optimization helpers to retrieve the best path, and approval/swap execution examples.
+
+Router Addresses:
+- Ubeswap Router (Mainnet/Alfajores): 0xE3D85638707C2bE50146fF28EDD13C0227914443
+
+Common Token Addresses (Mainnet):
+- CELO: 0x471EcE3750Da237f93B8E29Adec3C4EE2A3102C8 (or Wrapped CELO: 0x471ECE3750da237f93B8e29ADec3C4eE2A3102c8)
+- cUSD: 0x765DE816845861e75A25fCA122bb6898B8B1282a
+- cEUR: 0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73
+
+Ubeswap Routing Helper Hook & Swap Example:
+
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { parseUnits, formatUnits } from 'viem';
+import { useState, useEffect } from 'react';
+
+const UBESWAP_ROUTER_ADDRESS = '0xE3D85638707C2bE50146fF28EDD13C0227914443';
+
+const UBESWAP_ROUTER_ABI = [
+  {
+    name: 'getAmountsOut',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'path', type: 'address[]' }
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }]
+  },
+  {
+    name: 'swapExactTokensForTokens',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amountIn', type: 'uint256' },
+      { name: 'amountOutMin', type: 'uint256' },
+      { name: 'path', type: 'address[]' },
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' }
+    ],
+    outputs: [{ name: 'amounts', type: 'uint256[]' }]
+  }
+];
+
+const ERC20_ABI = [
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    outputs: [{ type: 'bool' }]
+  },
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' }
+    ],
+    outputs: [{ type: 'uint256' }]
+  }
+];
+
+// Custom Hook to find the best route path (Direct vs via CELO vs via cUSD)
+export function useUbeswapRoute(tokenInAddress, tokenOutAddress, amountInRaw) {
+  const [bestRoute, setBestRoute] = useState({
+    path: [],
+    expectedOutput: '0',
+    isLoading: false
+  });
+
+  // Generate potential routing paths
+  const paths = [
+    [tokenInAddress, tokenOutAddress], // Direct
+    [tokenInAddress, '0x471EcE3750Da237f93B8E29Adec3C4EE2A3102C8', tokenOutAddress], // via CELO
+    [tokenInAddress, '0x765DE816845861e75A25fCA122bb6898B8B1282a', tokenOutAddress]  // via cUSD
+  ].filter(p => {
+    const unique = new Set(p);
+    return unique.size === p.length; // Filter out invalid hops
+  });
+
+  // Query amounts out for different routing paths
+  const { data: directAmounts, isFetching: loadingDirect } = useReadContract({
+    address: UBESWAP_ROUTER_ADDRESS,
+    abi: UBESWAP_ROUTER_ABI,
+    functionName: 'getAmountsOut',
+    args: amountInRaw && paths[0] ? [BigInt(amountInRaw), paths[0]] : undefined,
+    query: { enabled: !!amountInRaw && !!paths[0] }
+  });
+
+  const { data: celoRouteAmounts, isFetching: loadingCelo } = useReadContract({
+    address: UBESWAP_ROUTER_ADDRESS,
+    abi: UBESWAP_ROUTER_ABI,
+    functionName: 'getAmountsOut',
+    args: amountInRaw && paths[1] ? [BigInt(amountInRaw), paths[1]] : undefined,
+    query: { enabled: !!amountInRaw && !!paths[1] }
+  });
+
+  const { data: cusdRouteAmounts, isFetching: loadingCusd } = useReadContract({
+    address: UBESWAP_ROUTER_ADDRESS,
+    abi: UBESWAP_ROUTER_ABI,
+    functionName: 'getAmountsOut',
+    args: amountInRaw && paths[2] ? [BigInt(amountInRaw), paths[2]] : undefined,
+    query: { enabled: !!amountInRaw && !!paths[2] }
+  });
+
+  useEffect(() => {
+    let best = { path: [], expectedOutput: BigInt(0) };
+
+    if (directAmounts && directAmounts.length > 0) {
+      const out = BigInt(directAmounts[directAmounts.length - 1]);
+      if (out > best.expectedOutput) best = { path: paths[0], expectedOutput: out };
+    }
+    if (celoRouteAmounts && celoRouteAmounts.length > 0) {
+      const out = BigInt(celoRouteAmounts[celoRouteAmounts.length - 1]);
+      if (out > best.expectedOutput) best = { path: paths[1], expectedOutput: out };
+    }
+    if (cusdRouteAmounts && cusdRouteAmounts.length > 0) {
+      const out = BigInt(cusdRouteAmounts[cusdRouteAmounts.length - 1]);
+      if (out > best.expectedOutput) best = { path: paths[2], expectedOutput: out };
+    }
+
+    if (best.path.length > 0) {
+      setBestRoute({
+        path: best.path,
+        expectedOutput: best.expectedOutput.toString(),
+        isLoading: loadingDirect || loadingCelo || loadingCusd
+      });
+    }
+  }, [directAmounts, celoRouteAmounts, cusdRouteAmounts, loadingDirect, loadingCelo, loadingCusd]);
+
+  return bestRoute;
+}
+
+// Token Swap React Component with Approval handling and routing integration
+export function TokenSwap() {
+  const { address } = useAccount();
+  const [tokenIn, setTokenIn] = useState('0x765DE816845861e75A25fCA122bb6898B8B1282a'); // cUSD
+  const [tokenOut, setTokenOut] = useState('0xD8763CBa276a3738E6DE85b4b3bF5FDed6D6cA73'); // cEUR
+  const [amountIn, setAmountIn] = useState('1.0');
+
+  const amountInRaw = amountIn ? parseUnits(amountIn, 18) : BigInt(0);
+
+  // Hook handles routing optimization and gives the best path
+  const { path, expectedOutput, isLoading: isRouteLoading } = useUbeswapRoute(tokenIn, tokenOut, amountInRaw);
+
+  // Check token allowance
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: tokenIn,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    args: address ? [address, UBESWAP_ROUTER_ADDRESS] : undefined,
+    query: { enabled: !!address }
+  });
+
+  const { writeContractAsync: writeContract } = useWriteContract();
+  const [isSwapping, setIsSwapping] = useState(false);
+
+  const handleSwap = async () => {
+    if (!address || !path.length) return;
+    setIsSwapping(true);
+    try {
+      // 1. Handle Approve if allowance is insufficient
+      if (!allowance || allowance < amountInRaw) {
+        const txApprove = await writeContract({
+          address: tokenIn,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [UBESWAP_ROUTER_ADDRESS, amountInRaw]
+        });
+        // Wait for approval confirmation (or custom wait/refetch)
+        await refetchAllowance();
+      }
+
+      // 2. Perform Swap with 0.5% slippage tolerance
+      const minAmountOut = BigInt(expectedOutput) * BigInt(995) / BigInt(1000);
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 mins deadline
+
+      await writeContract({
+        address: UBESWAP_ROUTER_ADDRESS,
+        abi: UBESWAP_ROUTER_ABI,
+        functionName: 'swapExactTokensForTokens',
+        args: [amountInRaw, minAmountOut, path, address, deadline]
+      });
+      alert('Swap successful!');
+    } catch (err) {
+      console.error('Swap execution error', err);
+      alert('Swap failed: ' + err.message);
+    } finally {
+      setIsSwapping(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg p-6 shadow-md max-w-sm">
+      <h3 className="text-xl font-bold mb-4">Ubeswap Swap Router</h3>
+      <input 
+        type="number" 
+        value={amountIn} 
+        onChange={e => setAmountIn(e.target.value)} 
+        className="w-full border p-2 rounded mb-4"
+      />
+      <div className="text-sm mb-4 text-gray-600">
+        Expected Output: {expectedOutput ? formatUnits(BigInt(expectedOutput), 18) : '0'}
+      </div>
+      <button 
+        onClick={handleSwap} 
+        disabled={isSwapping || isRouteLoading} 
+        className="w-full bg-yellow-400 text-black py-2 rounded font-bold"
+      >
+        {isSwapping ? 'Swapping...' : allowance && allowance >= amountInRaw ? 'Swap Now' : 'Approve & Swap'}
+      </button>
+    </div>
+  );
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🗳️ ADVANCED - GOVERNANCE PARTICIPATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
